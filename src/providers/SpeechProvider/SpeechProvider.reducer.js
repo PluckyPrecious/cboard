@@ -7,7 +7,7 @@ import {
   START_SPEECH,
   END_SPEECH
 } from './SpeechProvider.constants';
-
+import { getVoiceURI } from '../../i18n';
 import { CHANGE_LANG } from '../LanguageProvider/LanguageProvider.constants';
 import { LOGIN_SUCCESS } from '../../components/Account/Login/Login.constants';
 
@@ -37,7 +37,7 @@ function speechProviderReducer(state = initialState, action) {
 
       return {
         ...state,
-        options,
+        options
       };
     case RECEIVE_VOICES:
       return {
@@ -55,15 +55,31 @@ function speechProviderReducer(state = initialState, action) {
         }
       };
     case CHANGE_LANG:
-      return {
-        ...state,
-        options: {
-          ...state.options,
-          lang: action.lang,
-          voiceURI: state.voices.find(voice => voice.lang === action.lang)
-            .voiceURI
-        }
-      };
+      // hack just for alfanum voice
+      if (
+        action.lang === 'sr-RS' ||
+        action.lang === 'hr-HR' ||
+        action.lang === 'me-ME'
+      ) {
+        return {
+          ...state,
+          options: {
+            ...state.options,
+            lang: action.lang,
+            voiceURI: 'Alfanum Danica'
+          },
+          langs: ['hr-HR', 'me-ME', 'sr-RS']
+        };
+      } else {
+        return {
+          ...state,
+          options: {
+            ...state.options,
+            lang: action.lang,
+            voiceURI: getVoiceURI(action.lang, state.voices)
+          }
+        };
+      }
     case CHANGE_PITCH:
       return { ...state, options: { ...state.options, pitch: action.pitch } };
     case CHANGE_RATE:

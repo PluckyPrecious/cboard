@@ -14,6 +14,9 @@ import Button from '@material-ui/core/Button';
 import SearchIcon from '@material-ui/icons/Search';
 import KeyboardArrowRightIcon from '@material-ui/icons/KeyboardArrowRight';
 import KeyboardArrowLeftIcon from '@material-ui/icons/KeyboardArrowLeft';
+import Select from '@material-ui/core/Select';
+import MenuItem from '@material-ui/core/MenuItem';
+import InputLabel from '@material-ui/core/InputLabel';
 
 import messages from './TileEditor.messages';
 import SymbolSearch from '../SymbolSearch';
@@ -27,6 +30,7 @@ import IconButton from '../../UI/IconButton';
 import ColorSelect from '../../UI/ColorSelect';
 import VoiceRecorder from '../../VoiceRecorder';
 import './TileEditor.css';
+import { isCordova } from '../../../cordova-util';
 
 export class TileEditor extends Component {
   static propTypes = {
@@ -53,7 +57,8 @@ export class TileEditor extends Component {
     /**
      * Callback fired when submitting a new board tile
      */
-    onAddSubmit: PropTypes.func.isRequired
+    onAddSubmit: PropTypes.func.isRequired,
+    boards: PropTypes.array
   };
 
   static defaultProps = {
@@ -65,7 +70,8 @@ export class TileEditor extends Component {
 
     this.defaultTileColors = {
       folder: '#bbdefb',
-      symbol: '#fff176'
+      button: '#fff176',
+      board: '#999999'
     };
 
     this.defaultTile = {
@@ -75,7 +81,9 @@ export class TileEditor extends Component {
       image: '',
       loadBoard: '',
       sound: '',
-      backgroundColor: this.defaultTileColors.symbol
+      type: 'button',
+      backgroundColor: this.defaultTileColors.button,
+      linkedBoard: false
     };
 
     this.state = {
@@ -83,7 +91,8 @@ export class TileEditor extends Component {
       editingTiles: props.editingTiles,
       isSymbolSearchOpen: false,
       selectedBackgroundColor: '',
-      tile: this.defaultTile
+      tile: this.defaultTile,
+      linkedBoard: ''
     };
   }
 
@@ -186,22 +195,35 @@ export class TileEditor extends Component {
     this.updateTileProperty('sound', sound);
   };
   handleTypeChange = (event, type) => {
-    const typeFolder = type === 'folder';
-    const loadBoard = typeFolder ? shortid.generate() : '';
-
-    const backgroundColor = typeFolder
-      ? this.defaultTileColors.folder
-      : this.defaultTileColors.symbol;
-    const tile = { ...this.state.tile, backgroundColor, loadBoard };
-    this.setState({ tile });
+    let loadBoard = '';
+    if (type === 'folder' || type === 'board') {
+      loadBoard = shortid.generate();
+    }
+    let backgroundColor = this.defaultTileColors.button;
+    if (type === 'board') {
+      backgroundColor = this.defaultTileColors.board;
+    }
+    if (type === 'folder') {
+      backgroundColor = this.defaultTileColors.folder;
+    }
+    const tile = {
+      ...this.state.tile,
+      linkedBoard: false,
+      backgroundColor,
+      loadBoard,
+      type
+    };
+    this.setState({ tile, linkedBoard: '' });
   };
 
   handleBack = event => {
     this.setState({ activeStep: this.state.activeStep - 1 });
+    this.setState({ selectedBackgroundColor: '' });
   };
 
   handleNext = event => {
     this.setState({ activeStep: this.state.activeStep + 1 });
+    this.setState({ selectedBackgroundColor: '' });
   };
 
   handleSearchClick = event => {
@@ -211,17 +233,48 @@ export class TileEditor extends Component {
   handleColorChange = event => {
     const color = event ? event.target.value : '';
     this.setState({ selectedBackgroundColor: color });
+    if (event) {
+      this.updateTileProperty('backgroundColor', event.target.value);
+    } else {
+      this.updateTileProperty('backgroundColor', this.getDefaultColor());
+    }
   };
 
   getDefaultColor = () => {
-    if (this.currentTileProp('loadBoard')) {
+    if (this.currentTileProp('type') === 'folder') {
       return this.defaultTileColors.folder;
     }
-    return this.defaultTileColors.symbol;
+    if (this.currentTileProp('type') === 'button') {
+      return this.defaultTileColors.button;
+    }
+    if (this.currentTileProp('type') === 'board') {
+      return this.defaultTileColors.board;
+    }
+  };
+
+  handleBoardsChange = event => {
+    if (event.target.value !== 'none') {
+      this.setState({
+        linkedBoard: event.target.value,
+        tile: {
+          ...this.state.tile,
+          linkedBoard: true,
+          loadBoard: event.target.value.id
+        }
+      });
+    } else {
+      this.setState({
+        linkedBoard: 'none',
+        tile: {
+          ...this.state.tile,
+          linkedBoard: false
+        }
+      });
+    }
   };
 
   render() {
-    const { open, intl } = this.props;
+    const { open, intl, boards } = this.props;
 
     const currentLabel = this.currentTileProp('labelKey')
       ? intl.formatMessage({ id: this.currentTileProp('labelKey') })
@@ -279,7 +332,11 @@ export class TileEditor extends Component {
               <div className="TileEditor__fields">
                 <TextField
                   id="label"
-                  label={intl.formatMessage(messages.label)}
+                  label={
+                    this.currentTileProp('type') === 'board'
+                      ? intl.formatMessage(messages.boardName)
+                      : intl.formatMessage(messages.label)
+                  }
                   value={currentLabel}
                   onChange={this.handleLabelChange}
                   fullWidth
@@ -288,6 +345,7 @@ export class TileEditor extends Component {
 
                 <TextField
                   id="vocalization"
+                  disabled={this.currentTileProp('type') === 'board'}
                   label={intl.formatMessage(messages.vocalization)}
                   value={this.currentTileProp('vocalization') || ''}
                   onChange={this.handleVocalizationChange}
@@ -300,11 +358,7 @@ export class TileEditor extends Component {
                       <RadioGroup
                         aria-label={intl.formatMessage(messages.type)}
                         name="type"
-                        value={
-                          this.currentTileProp('loadBoard')
-                            ? 'folder'
-                            : 'button'
-                        }
+                        value={this.currentTileProp('type')}
                         onChange={this.handleTypeChange}
                       >
                         <FormControlLabel
@@ -312,26 +366,69 @@ export class TileEditor extends Component {
                           control={<Radio />}
                           label={intl.formatMessage(messages.button)}
                         />
+                        <div>
+                          <FormControlLabel
+                            className="TileEditor__radiogroup__formcontrollabel"
+                            value="folder"
+                            control={<Radio />}
+                            label={intl.formatMessage(messages.folder)}
+                          />
+                          {this.currentTileProp('type') === 'folder' && (
+                            <div>
+                              <FormControl fullWidth>
+                                <InputLabel id="boards-input-label">
+                                  {intl.formatMessage(messages.existingBoards)}
+                                </InputLabel>
+                                <Select
+                                  labelId="boards-select-label"
+                                  id="boards-select"
+                                  autoWidth={true}
+                                  value={this.state.linkedBoard}
+                                  onChange={this.handleBoardsChange}
+                                >
+                                  <MenuItem value="none">
+                                    <em>{intl.formatMessage(messages.none)}</em>
+                                  </MenuItem>
+                                  {boards.map(
+                                    board =>
+                                      !board.hidden && (
+                                        <MenuItem key={board.id} value={board}>
+                                          {board.name}
+                                        </MenuItem>
+                                      )
+                                  )}
+                                </Select>
+                              </FormControl>
+                            </div>
+                          )}
+                        </div>
                         <FormControlLabel
-                          value="folder"
+                          className="TileEditor__radiogroup__formcontrollabel"
+                          value="board"
                           control={<Radio />}
-                          label={intl.formatMessage(messages.folder)}
+                          label={intl.formatMessage(messages.board)}
                         />
                       </RadioGroup>
                     </FormControl>
-                    <ColorSelect
-                      selectedColor={this.state.selectedBackgroundColor}
-                      onChange={this.handleColorChange}
+                  </div>
+                )}
+                <div className="TileEditor__colorselect">
+                  <ColorSelect
+                    selectedColor={this.state.selectedBackgroundColor}
+                    onChange={this.handleColorChange}
+                  />
+                </div>
+                {this.currentTileProp('type') !== 'board' && !isCordova() && (
+                  <div className="TileEditor__voicerecorder">
+                    <FormLabel>
+                      {intl.formatMessage(messages.voiceRecorder)}
+                    </FormLabel>
+                    <VoiceRecorder
+                      src={this.currentTileProp('sound')}
+                      onChange={this.handleSoundChange}
                     />
                   </div>
                 )}
-                <FormLabel>
-                  {intl.formatMessage(messages.voiceRecorder)}
-                </FormLabel>
-                <VoiceRecorder
-                  src={this.currentTileProp('sound')}
-                  onChange={this.handleSoundChange}
-                />
               </div>
             </FullScreenDialogContent>
 

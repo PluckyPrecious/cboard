@@ -13,9 +13,11 @@ import { finishFirstVisit } from '../App/App.actions';
 import Information from './Information';
 import Login from '../Account/Login';
 import SignUp from '../Account/SignUp';
+import ResetPassword from '../Account/ResetPassword';
 import CboardLogo from './CboardLogo/CboardLogo.component';
 import './WelcomeScreen.css';
 import { API_URL } from '../../constants';
+import { isCordova } from '../../cordova-util';
 
 export class WelcomeScreen extends Component {
   state = {
@@ -30,6 +32,11 @@ export class WelcomeScreen extends Component {
     this.setState({
       activeView
     });
+  };
+
+  onResetPasswordClick = () => {
+    this.resetActiveView();
+    this.handleActiveView('forgot');
   };
 
   resetActiveView = () => {
@@ -67,24 +74,27 @@ export class WelcomeScreen extends Component {
             >
               <FormattedMessage {...messages.signUp} />
             </Button>
+            {!isCordova() && (
+              <div className="WelcomeScreen__button WelcomeScreen__button">
+                <GoogleLoginButton
+                  className="WelcomeScreen__button WelcomeScreen__button--google"
+                  onClick={() => {
+                    window.location = `${API_URL}/login/google`;
+                  }}
+                >
+                  <FormattedMessage {...messages.google} />
+                </GoogleLoginButton>
 
-            <GoogleLoginButton
-              className="WelcomeScreen__button WelcomeScreen__button--google"
-              onClick={() => {
-                window.location = `${API_URL}/login/google`;
-              }}
-            >
-              <FormattedMessage {...messages.google} />
-            </GoogleLoginButton>
-
-            <FacebookLoginButton
-              className="WelcomeScreen__button WelcomeScreen__button--facebook"
-              onClick={() => {
-                window.location = `${API_URL}/login/facebook`;
-              }}
-            >
-              <FormattedMessage {...messages.facebook} />
-            </FacebookLoginButton>
+                <FacebookLoginButton
+                  className="WelcomeScreen__button WelcomeScreen__button--facebook"
+                  onClick={() => {
+                    window.location = `${API_URL}/login/facebook`;
+                  }}
+                >
+                  <FormattedMessage {...messages.facebook} />
+                </FacebookLoginButton>
+              </div>
+            )}
 
             <Button
               className="WelcomeScreen__button WelcomeScreen__button--skip"
@@ -97,6 +107,11 @@ export class WelcomeScreen extends Component {
         </div>
         <Login
           isDialogOpen={activeView === 'login'}
+          onResetPasswordClick={this.onResetPasswordClick}
+          onClose={this.resetActiveView}
+        />
+        <ResetPassword
+          isDialogOpen={activeView === 'forgot'}
           onClose={this.resetActiveView}
         />
         <SignUp

@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import axios from 'axios';
+import moment from 'moment';
 import pdfMake from 'pdfmake/build/pdfmake';
 import pdfFonts from 'pdfmake/build/vfs_fonts';
 import { saveAs } from 'file-saver';
@@ -9,8 +10,15 @@ import {
   CBOARD_COLUMNS,
   CBOARD_EXT_PREFIX,
   CBOARD_EXT_PROPERTIES,
-  CBOARD_ZIP_OPTIONS
+  CBOARD_ZIP_OPTIONS,
+  NOT_FOUND_IMAGE,
+  EMPTY_IMAGE
 } from './Export.constants';
+import {
+  isCordova,
+  requestCvaWritePermissions,
+  writeCvaFile
+} from '../../../cordova-util';
 
 pdfMake.vfs = pdfFonts.pdfMake.vfs;
 
@@ -84,108 +92,123 @@ async function boardToOBF(boardsMap, board = {}, intl) {
       currentRow =
         i >= (currentRow + 1) * CBOARD_COLUMNS ? currentRow + 1 : currentRow;
 
-      if (grid[currentRow]) {
-        grid[currentRow].push(tile.id);
-      } else {
-        grid[currentRow] = [tile.id];
-      }
-
-      const button = {
-        id: tile.id,
-        ...getOBFButtonProps(tile, intl)
-      };
-
-      if (tile.image && tile.image.length) {
-        let imageResponse = null;
-        let url = '';
-        let contentType = '';
-        let fetchedImageID = `custom/${board.name ||
-          board.nameKey}/${tile.label || tile.labelKey || tile.id}`;
-
-        if (tile.image.startsWith('data:')) {
-          imageResponse = getBase64Image(tile.image);
-          contentType = imageResponse['content_type'];
-          const defaultExtension =
-            contentType.indexOf('/') >= 0 ? contentType.split('/')[1] : '';
-          fetchedImageID = defaultExtension.length
-            ? `${fetchedImageID}.${defaultExtension}`
-            : fetchedImageID;
-          url = `/${fetchedImageID}`;
+      if (tile) {
+        if (grid[currentRow]) {
+          grid[currentRow].push(tile.id);
         } else {
-          url = tile.image.startsWith('/') ? tile.image : `/${tile.image}`;
-          fetchedImageID = tile.image;
-          try {
-            imageResponse = await axios({
-              method: 'get',
-              url,
-              responseType: 'arraybuffer'
-            });
-
-            contentType = imageResponse.headers['content-type'];
-          } catch (e) {}
+          grid[currentRow] = [tile.id];
         }
 
-        if (imageResponse) {
-          const imageID = `${board.id}_${tile.image}`;
-          fetchedImages[fetchedImageID] = imageResponse;
-          button['image_id'] = imageID;
-          images[imageID] = {
-            id: imageID,
-            path: `images${url}`,
-            content_type: contentType,
-            width: 300,
-            height: 300
+        const button = {
+          id: tile.id,
+          ...getOBFButtonProps(tile, intl)
+        };
+
+        if (tile.image && tile.image.length) {
+          // Cordova path cannot be absolute
+          const image =
+            isCordova() && tile.image && tile.image.search('/') === 0
+              ? `.${tile.image}`
+              : tile.image;
+          let imageResponse = null;
+          let url = '';
+          let contentType = '';
+          let fetchedImageID = `custom/${board.name ||
+            board.nameKey}/${tile.label || tile.labelKey || tile.id}`;
+
+          if (image.startsWith('data:')) {
+            imageResponse = getBase64Image(image);
+            contentType = imageResponse['content_type'];
+            const defaultExtension =
+              contentType.indexOf('/') >= 0 ? contentType.split('/')[1] : '';
+            fetchedImageID = defaultExtension.length
+              ? `${fetchedImageID}.${defaultExtension}`
+              : fetchedImageID;
+            url = `/${fetchedImageID}`;
+          } else {
+            if (!isCordova()) {
+              url = image.startsWith('/') ? image : `/${image}`;
+            }
+            fetchedImageID = image;
+            try {
+              imageResponse = await axios({
+                method: 'get',
+                url,
+                responseType: 'arraybuffer'
+              });
+
+              contentType = imageResponse.headers['content-type'];
+            } catch (e) {}
+          }
+
+          if (imageResponse) {
+            const imageID = `${board.id}_${image}`;
+            fetchedImages[fetchedImageID] = imageResponse;
+            button['image_id'] = imageID;
+            images[imageID] = {
+              id: imageID,
+              path: `${url}`,
+              content_type: contentType,
+              width: 300,
+              height: 300
+            };
+          }
+        }
+
+        if (tile.loadBoard && boardsMap[tile.loadBoard]) {
+          const loadBoardData = boardsMap[tile.loadBoard];
+          button['load_board'] = {
+            name: loadBoardData.nameKey
+              ? intl.formatMessage({ id: loadBoardData.nameKey })
+              : '',
+            path: `boards/${tile.loadBoard}.obf`
           };
         }
-      }
 
-      if (tile.loadBoard && boardsMap[tile.loadBoard]) {
-        const loadBoardData = boardsMap[tile.loadBoard];
-        button['load_board'] = {
-          name: loadBoardData.nameKey
-            ? intl.formatMessage({ id: loadBoardData.nameKey })
-            : '',
-          path: `boards/${tile.loadBoard}.obf`
-        };
+        return button;
       }
-
-      return button;
     })
   );
 
-  const lastGridRowDiff = CBOARD_COLUMNS - grid[grid.length - 1].length;
-  if (lastGridRowDiff > 0) {
-    const emptyButtons = new Array(lastGridRowDiff).map(() => null);
-    grid[grid.length - 1] = grid[grid.length - 1].concat(emptyButtons);
+  if (grid.length >= 1) {
+    const lastGridRowDiff = CBOARD_COLUMNS - grid[grid.length - 1].length;
+    if (lastGridRowDiff > 0) {
+      const emptyButtons = new Array(lastGridRowDiff).map(() => null);
+      grid[grid.length - 1] = grid[grid.length - 1].concat(emptyButtons);
+    }
+
+    const obf = {
+      format: 'open-board-0.1',
+      id: board.id,
+      locale: intl.locale,
+      name: board.name,
+      url: `${CBOARD_OBF_CONSTANTS.URL}${board.id}`,
+      license: CBOARD_OBF_CONSTANTS.LICENSE,
+      images: Object.values(images),
+      buttons,
+      sounds: [],
+      grid: {
+        rows: grid.length,
+        columns: CBOARD_COLUMNS,
+        order: grid
+      },
+      description_html: board.nameKey
+        ? intl.formatMessage({ id: board.nameKey })
+        : ''
+    };
+
+    const boardExtProps = CBOARD_EXT_PROPERTIES.filter(
+      key => typeof board[key] !== 'undefined'
+    );
+    boardExtProps.forEach(key => {
+      const keyWithPrefix = `${CBOARD_EXT_PREFIX}${toSnakeCase(key)}`;
+      obf[keyWithPrefix] = board[key];
+    });
+
+    return { obf, images: fetchedImages };
+  } else {
+    return { obf: null, images: null };
   }
-
-  const obf = {
-    format: 'open-board-0.1',
-    id: board.id,
-    locale: intl.locale,
-    name: intl.formatMessage({ id: board.nameKey || board.id }),
-    url: `${CBOARD_OBF_CONSTANTS.URL}${board.id}`,
-    license: CBOARD_OBF_CONSTANTS.LICENSE,
-    images: Object.values(images),
-    buttons,
-    sounds: [],
-    grid: {
-      rows: grid.length,
-      columns: CBOARD_COLUMNS,
-      order: grid
-    },
-    description_html: board.nameKey
-      ? intl.formatMessage({ id: board.nameKey })
-      : ''
-  };
-
-  const boardExtProps = CBOARD_EXT_PROPERTIES.filter(key => !!board[key]);
-  boardExtProps.forEach(key => {
-    const keyWithPrefix = `${CBOARD_EXT_PREFIX}${toSnakeCase(key)}`;
-    obf[keyWithPrefix] = board[key];
-  });
-
-  return { obf, images: fetchedImages };
 }
 
 function getPDFTileData(tile, intl) {
@@ -197,7 +220,7 @@ function getPDFTileData(tile, intl) {
 }
 
 async function toDataURL(url, styles = {}, outputFormat = 'image/jpeg') {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     imageElement.crossOrigin = 'Anonymous';
     imageElement.onload = function() {
       const canvas = document.createElement('CANVAS');
@@ -237,22 +260,32 @@ async function toDataURL(url, styles = {}, outputFormat = 'image/jpeg') {
         ctx.lineWidth = 3;
         ctx.strokeRect(0, 0, 150, 150);
       }
-
       const dataURL = canvas.toDataURL(outputFormat);
       resolve(dataURL);
     };
-
-    imageElement.src = url;
+    imageElement.onerror = function() {
+      reject(new Error('Getting remote image failed'));
+    };
+    // Cordova path cannot be absolute
+    const imageUrl =
+      isCordova() && url && url.search('/') === 0 ? `.${url}` : url;
+    if (url) {
+      imageElement.src = imageUrl;
+    } else {
+      imageElement.src = EMPTY_IMAGE;
+    }
     if (imageElement.complete || imageElement.complete === undefined) {
-      imageElement.src = url;
+      if (url) {
+        imageElement.src = imageUrl;
+      } else {
+        imageElement.src = EMPTY_IMAGE;
+      }
     }
   });
 }
 
 async function generatePDFBoard(board, intl, breakPage = true) {
-  const header = {
-    text: intl.formatMessage({ id: board.nameKey || board.id })
-  };
+  const header = board.name || '';
 
   const table = {
     table: {
@@ -283,33 +316,28 @@ async function generatePDFBoard(board, intl, breakPage = true) {
       i >= (currentRow + 1) * CBOARD_COLUMNS ? currentRow + 1 : currentRow;
     const fixedRow = currentRow * 2;
     let imageData = '';
-
-    if (image && image.length) {
-      let dataURL = image;
-      if (
-        !image.startsWith('data:') ||
-        image.startsWith('data:image/svg+xml')
-      ) {
-        let url = image;
-
-        const styles = {};
-
-        if (tile.backgroundColor) {
-          styles.backgroundColor = tile.backgroundColor;
-        }
-        if (tile.borderColor) {
-          styles.borderColor = tile.borderColor;
-        }
-
-        dataURL = await toDataURL(url, styles);
+    let dataURL = image;
+    if (!image.startsWith('data:') || image.startsWith('data:image/svg+xml')) {
+      let url = image;
+      const styles = {};
+      if (tile.backgroundColor) {
+        styles.backgroundColor = tile.backgroundColor;
       }
-
-      imageData = {
-        image: dataURL,
-        alignment: 'center',
-        width: '100'
-      };
+      if (tile.borderColor) {
+        styles.borderColor = tile.borderColor;
+      }
+      try {
+        dataURL = await toDataURL(url, styles);
+      } catch (err) {
+        console.log(err.message);
+        dataURL = NOT_FOUND_IMAGE;
+      }
     }
+    imageData = {
+      image: dataURL,
+      alignment: 'center',
+      width: '100'
+    };
 
     const labelData = {
       text: label,
@@ -387,7 +415,15 @@ export async function openboardExportAdapter(boards = [], intl) {
   zip.file('manifest.json', JSON.stringify(manifest));
 
   zip.generateAsync(CBOARD_ZIP_OPTIONS).then(content => {
-    saveAs(content, EXPORT_CONFIG_BY_TYPE.openboard.filename);
+    if (content) {
+      if (isCordova()) {
+        requestCvaWritePermissions();
+        const name = 'Download/boards.obz';
+        writeCvaFile(name, content);
+      } else {
+        saveAs(content, EXPORT_CONFIG_BY_TYPE.openboard.filename);
+      }
+    }
   });
 }
 
@@ -396,29 +432,35 @@ export async function cboardExportAdapter(boards = []) {
     type: 'text/json;charset=utf-8;'
   });
 
-  // IE11 & Edge
-  if (navigator.msSaveBlob) {
-    navigator.msSaveBlob(jsonData, EXPORT_CONFIG_BY_TYPE.cboard.filename);
-  } else {
-    // In FF link must be added to DOM to be clicked
-    const link = document.createElement('a');
-    link.href = window.URL.createObjectURL(jsonData);
-    link.setAttribute('download', EXPORT_CONFIG_BY_TYPE.cboard.filename);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  if (jsonData) {
+    if (isCordova()) {
+      requestCvaWritePermissions();
+      const name = 'Download/boards.json';
+      writeCvaFile(name, jsonData);
+    }
+    // IE11 & Edge
+    if (navigator.msSaveBlob) {
+      navigator.msSaveBlob(jsonData, EXPORT_CONFIG_BY_TYPE.cboard.filename);
+    } else {
+      // In FF link must be added to DOM to be clicked
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(jsonData);
+      link.setAttribute('download', EXPORT_CONFIG_BY_TYPE.cboard.filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
   }
 }
 
-export async function pdfExportAdapter(boards = [], intl, activeBoardId) {
+export async function pdfExportAdapter(boards = [], intl) {
   const docDefinition = {
     pageSize: 'A4',
     pageOrientation: 'landscape',
     content: []
   };
-  const fboards = boards.filter(board => board.id === activeBoardId );
-  const lastBoardIndex = fboards.length - 1;
-  const content = await fboards.reduce(async (prev, board, i) => {
+  const lastBoardIndex = boards.length - 1;
+  const content = await boards.reduce(async (prev, board, i) => {
     const prevContent = await prev;
     const breakPage = i !== lastBoardIndex;
     const boardPDFData = await generatePDFBoard(board, intl, breakPage);
@@ -426,8 +468,27 @@ export async function pdfExportAdapter(boards = [], intl, activeBoardId) {
   }, Promise.resolve([]));
 
   docDefinition.content = content;
+  const pdfObj = pdfMake.createPdf(docDefinition);
 
-  pdfMake.createPdf(docDefinition).download(EXPORT_CONFIG_BY_TYPE.pdf.filename);
+  if (pdfObj) {
+    let prefix = moment().format('hh-mm-ss-');
+    if (content.length === 2) {
+      prefix = prefix + content[0] + ' ';
+    } else {
+      prefix = prefix + 'boardsset ';
+    }
+    if (isCordova()) {
+      requestCvaWritePermissions();
+      pdfObj.getBuffer(buffer => {
+        var blob = new Blob([buffer], { type: 'application/pdf' });
+        const name = 'Download/' + prefix + EXPORT_CONFIG_BY_TYPE.pdf.filename;
+        writeCvaFile(name, blob);
+      });
+    } else {
+      // On a browser simply use download!
+      pdfObj.download(prefix + EXPORT_CONFIG_BY_TYPE.pdf.filename);
+    }
+  }
 }
 
 export default {

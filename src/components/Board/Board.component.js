@@ -77,7 +77,9 @@ export class Board extends Component {
 
   static defaultProps = {
     displaySettings: {
-      uiSize: 'Standard'
+      uiSize: 'Standard',
+      labelPosition: 'Below',
+      hideOutputActive: false
     },
     navigationSettings: {},
     scannerSettings: { active: false, delay: 2000, strategy: 'automatic' },
@@ -161,7 +163,12 @@ export class Board extends Component {
   };
 
   renderTiles(tiles) {
-    const { isSelecting, isSaving, selectedTileIds } = this.props;
+    const {
+      isSelecting,
+      isSaving,
+      selectedTileIds,
+      displaySettings
+    } = this.props;
 
     return tiles.map(tile => {
       const isSelected = selectedTileIds.includes(tile.id);
@@ -180,7 +187,11 @@ export class Board extends Component {
               this.handleTileFocus(tile.id);
             }}
           >
-            <Symbol image={tile.image} label={tile.label} />
+            <Symbol
+              image={tile.image}
+              label={tile.label}
+              labelpos={displaySettings.labelPosition}
+            />
 
             {isSelecting && !isSaving && (
               <div className="CheckCircle">
@@ -238,7 +249,11 @@ export class Board extends Component {
           })}
         >
           <Scannable>
-            <div className="Board__output">
+            <div
+              className={classNames('Board__output', {
+                hidden: this.props.displaySettings.hideOutputActive
+              })}
+            >
               <OutputContainer />
             </div>
           </Scannable>

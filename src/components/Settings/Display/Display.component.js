@@ -1,6 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 import { FormattedMessage } from 'react-intl';
+import Switch from '@material-ui/core/Switch';
 import Paper from '@material-ui/core/Paper';
 import List from '@material-ui/core/List';
 import ListItem from '@material-ui/core/ListItem';
@@ -16,8 +17,20 @@ import './Display.css';
 import {
   DISPLAY_SIZE_STANDARD,
   DISPLAY_SIZE_LARGE,
-  DISPLAY_SIZE_EXTRALARGE
+  DISPLAY_SIZE_EXTRALARGE,
+  LABEL_POSITION_ABOVE,
+  LABEL_POSITION_BELOW,
+  LABEL_POSITION_HIDDEN
 } from './Display.constants';
+
+const propTypes = {
+  /**
+   * Callback fired when clicking the back button
+   */
+  onClose: PropTypes.func,
+  displaySettings: PropTypes.object.isRequired,
+  updateDisplaySettings: PropTypes.func.isRequired
+};
 
 class Display extends React.Component {
   constructor(props) {
@@ -27,6 +40,12 @@ class Display extends React.Component {
       ...props.displaySettings
     };
   }
+
+  toggleHideOutput = () => {
+    this.setState({
+      hideOutputActive: !this.state.hideOutputActive
+    });
+  };
 
   onDisplaySettingsChange(displaySetting, event) {
     const {
@@ -46,22 +65,44 @@ class Display extends React.Component {
       >
         <FormControlLabel
           control={<Radio />}
-          label={this.props.intl.formatMessage(messages[DISPLAY_SIZE_STANDARD])}
-          value={DISPLAY_SIZE_STANDARD}
-          labelPlacement="start"
-        />
-        <FormControlLabel
-          control={<Radio />}
-          label={this.props.intl.formatMessage(messages[DISPLAY_SIZE_LARGE])}
-          value={DISPLAY_SIZE_LARGE}
+          label={this.props.intl.formatMessage(
+            name === 'labelPosition'
+              ? messages[LABEL_POSITION_ABOVE]
+              : messages[DISPLAY_SIZE_STANDARD]
+          )}
+          value={this.props.intl.formatMessage(
+            name === 'labelPosition'
+              ? messages[LABEL_POSITION_ABOVE]
+              : messages[DISPLAY_SIZE_STANDARD]
+          )}
           labelPlacement="start"
         />
         <FormControlLabel
           control={<Radio />}
           label={this.props.intl.formatMessage(
-            messages[DISPLAY_SIZE_EXTRALARGE]
+            name === 'labelPosition'
+              ? messages[LABEL_POSITION_BELOW]
+              : messages[DISPLAY_SIZE_LARGE]
           )}
-          value={DISPLAY_SIZE_EXTRALARGE}
+          value={this.props.intl.formatMessage(
+            name === 'labelPosition'
+              ? messages[LABEL_POSITION_BELOW]
+              : messages[DISPLAY_SIZE_LARGE]
+          )}
+          labelPlacement="start"
+        />
+        <FormControlLabel
+          control={<Radio />}
+          label={this.props.intl.formatMessage(
+            name === 'labelPosition'
+              ? messages[LABEL_POSITION_HIDDEN]
+              : messages[DISPLAY_SIZE_EXTRALARGE]
+          )}
+          value={this.props.intl.formatMessage(
+            name === 'labelPosition'
+              ? messages[LABEL_POSITION_HIDDEN]
+              : messages[DISPLAY_SIZE_EXTRALARGE]
+          )}
           labelPlacement="start"
         />
       </RadioGroup>
@@ -101,6 +142,33 @@ class Display extends React.Component {
                 {this.renderRadioGroup('fontSize')}
               </ListItemSecondaryAction>
             </ListItem>
+            <ListItem>
+              <ListItemText
+                primary={<FormattedMessage {...messages.outputHide} />}
+                secondary={
+                  <FormattedMessage {...messages.outputHideSecondary} />
+                }
+              />
+              <ListItemSecondaryAction>
+                <Switch
+                  checked={this.state.hideOutputActive}
+                  onChange={this.toggleHideOutput}
+                  value="active"
+                  color="primary"
+                />
+              </ListItemSecondaryAction>
+            </ListItem>
+            <ListItem>
+              <ListItemText
+                primary={<FormattedMessage {...messages.labelPosition} />}
+                secondary={
+                  <FormattedMessage {...messages.labelPositionSecondary} />
+                }
+              />
+              <ListItemSecondaryAction className="Display__Options">
+                {this.renderRadioGroup('labelPosition')}
+              </ListItemSecondaryAction>
+            </ListItem>
           </List>
         </Paper>
       </FullScreenDialog>
@@ -108,8 +176,6 @@ class Display extends React.Component {
   }
 }
 
-Display.propTypes = {
-  displaySettings: PropTypes.object.isRequired
-};
+Display.propTypes = propTypes;
 
 export default Display;

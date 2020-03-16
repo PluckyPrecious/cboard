@@ -1,20 +1,12 @@
-import { normalizeLanguageCode } from '../../i18n';
+import { isCordova } from '../../cordova-util';
 
 // `window.speechSynthesis` is present when running inside cordova
-const synth = global.window.speechSynthesis || window.speechSynthesis;
+let synth = window.speechSynthesis;
 let cachedVoices = [];
 
 const tts = {
   isSupported() {
     return 'speechSynthesis' in window;
-  },
-
-  normalizeVoices(voices) {
-    return voices.map(({ voiceURI, name, lang }) => ({
-      voiceURI,
-      name,
-      lang: normalizeLanguageCode(lang)
-    }));
   },
 
   getVoiceByLang(lang) {
@@ -24,9 +16,9 @@ const tts = {
   },
 
   getVoiceByVoiceURI(VoiceURI) {
-    return this.getVoices().then(voices =>
-      voices.find(voice => voice.voiceURI === VoiceURI)
-    );
+    return this.getVoices().then(voices => {
+      return voices.find(voice => voice.voiceURI === VoiceURI);
+    });
   },
 
   getLangs() {
@@ -38,8 +30,13 @@ const tts = {
 
   // Get voices depending on platform (browser/cordova)
   _getPlatformVoices() {
-    const voices = synth.getVoices() || [];
-
+    let voices = {};
+    try {
+      voices = synth.getVoices();
+    } catch (err) {
+      console.log(err.message);
+      synth = window.speechSynthesis;
+    }
     // On Cordova, voice results are under `._list`
     return voices._list || voices;
   },
@@ -54,15 +51,26 @@ const tts = {
 
       // iOS
       if (cachedVoices.length) {
-        resolve(this.normalizeVoices(cachedVoices));
+        resolve(cachedVoices);
       }
 
       // Android
       if ('onvoiceschanged' in synth) {
-        speechSynthesis.onvoiceschanged = () => {
-          cachedVoices = this._getPlatformVoices();
-          resolve(this.normalizeVoices(cachedVoices));
-        };
+        synth.addEventListener('voiceschanged', function voiceslst() {
+          const voices = synth.getVoices();
+          if (!voices.length) {
+            return null;
+          } else {
+            synth.removeEventListener('voiceschanged', voiceslst);
+            // On Cordova, voice results are under `._list`
+            cachedVoices = voices._list || voices;
+            resolve(cachedVoices);
+          }
+        });
+      } else if (isCordova()) {
+        // Samsung devices on Cordova
+        cachedVoices = this._getPlatformVoices();
+        resolve(cachedVoices);
       }
     });
   },
@@ -74,6 +82,7 @@ const tts = {
   speak(text, { voiceURI, pitch = 1, rate = 1, volume = 1, onend }) {
     this.getVoiceByVoiceURI(voiceURI).then(voice => {
       const msg = new SpeechSynthesisUtterance(text);
+      msg.text = text;
       msg.voice = voice;
       msg.name = voice.name;
       msg.lang = voice.lang;

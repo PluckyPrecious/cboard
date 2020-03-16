@@ -13,6 +13,10 @@ export default defineMessages({
     id: 'cboard.components.Board.TileEditor.label',
     defaultMessage: 'Label'
   },
+  boardName: {
+    id: 'cboard.components.Board.TileEditor.boardName',
+    defaultMessage: 'Board Name'
+  },
   vocalization: {
     id: 'cboard.components.Board.TileEditor.vocalization',
     defaultMessage: 'Vocalization'
@@ -20,6 +24,10 @@ export default defineMessages({
   voiceRecorder: {
     id: 'cboard.components.Board.TileEditor.voiceRecorder',
     defaultMessage: 'Voice Recorder'
+  },
+  board: {
+    id: 'cboard.components.Board.TileEditor.board',
+    defaultMessage: 'Empty Board'
   },
   button: {
     id: 'cboard.components.Board.TileEditor.button',
@@ -44,5 +52,13 @@ export default defineMessages({
   symbolSearch: {
     id: 'cboard.components.Board.TileEditor.symbolSearch',
     defaultMessage: 'Symbol search'
+  },
+  existingBoards: {
+    id: 'cboard.components.Board.TileEditor.existingBoards',
+    defaultMessage: 'Link to an existing board'
+  },
+  none: {
+    id: 'cboard.components.Board.TileEditor.none',
+    defaultMessage: 'None'
   }
 });
